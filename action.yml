@@ -15,7 +15,7 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
+    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && statsWith(github.event.comment.body, '/apercu') }}
       id: state
       shell: bash
       env:
@@ -32,7 +32,7 @@ runs:
           echo "hash=$(md5sum .apercu-state.json | cut -d " " -f 1)" >> $GITHUB_OUTPUT
           echo "comment=$COMMENT_ID" >> $GITHUB_OUTPUT
         fi
-    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
+    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && statsWith(github.event.comment.body, '/apercu') }}
       id: parse
       shell: bash
       env:
@@ -52,10 +52,11 @@ runs:
           else
             APERCU_OUTPUT=$(${{ github.action_path }}/apercu -j -s .apercu-state.json reset)
           fi
+          gh pr comment "${{ github.event.issue.number }}" --body "Apercu - State resetted successfully"
         fi
         DATABASE_CONNECTIONS="$(echo "$APERCU_OUTPUT" | grep "DATABASE_CONNECTIONS" | cut -d "=" -f 2-)"
         echo "database_connections=${DATABASE_CONNECTIONS}" >> $GITHUB_OUTPUT
-    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
+    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/apercu') }}
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
