@@ -1,0 +1,80 @@
+name: 'Apercu - Commands'
+description: 'Handle commands sent in pull request comments'
+author: 'Celer'
+
+inputs:
+  debug:
+    description: 'Enable debug logs'
+    default: 'false'
+
+outputs:
+  database_connections:
+    description: 'Connections fields for the preview databases in json format, use fromJSON() to access fields'
+    value: ${{ steps.apercu_run.outputs.database_connections }}
+
+runs:
+  using: 'composite'
+  steps:
+    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
+      id: state
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # Find github comment with apercu state data
+        COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+                          --jq '[.[] | select(.body | contains("<!-- apercu-state-data")) | .id] | first')
+        if [ -n "$COMMENT_ID" ]; then
+          COMMENT_BODY=$(gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
+                            --jq '.body')
+
+          echo "$COMMENT_BODY" | sed -n '/<!-- apercu-state-data/,/-->/p' | sed '1d;$d' > .apercu-state.json
+          echo "hash=$(md5sum .apercu-state.json | cut -d " " -f 1)" >> $GITHUB_OUTPUT
+          echo "comment=$COMMENT_ID" >> $GITHUB_OUTPUT
+        fi
+    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
+      id: parse
+      shell: bash
+      env:
+        COMMENT: ${{ github.event.comment.body }}
+      run: |
+        COMMAND=$(echo "$COMMENT" | awk '{print $2}')
+        echo "command=$COMMAND" >> $GITHUB_OUTPUT
+    - if: ${{ github.event.issue.pull_request && github.event_name == 'issue_comment' && github.event.action == 'created' && startsWith(github.event.comment.body, '/apercu') }}
+      id: apercu_run
+      shell: bash
+      run: |
+        export PR_NUMBER=${{ github.event.issue.number }}
+        chmod +x ${{ github.action_path }}/apercu
+        if [[ "${{ steps.parse.outputs.command }}" == "reset" ]]; then
+          if [[ "${{ inputs.debug }}" == 'true' ]]; then
+            APERCU_OUTPUT=$(${{ github.action_path }}/apercu -j -d -s .apercu-state.json reset)
+          else
+            APERCU_OUTPUT=$(${{ github.action_path }}/apercu -j -s .apercu-state.json reset)
+          fi
+        fi
+        DATABASE_CONNECTIONS="$(echo "$APERCU_OUTPUT" | grep "DATABASE_CONNECTIONS" | cut -d "=" -f 2-)"
+        echo "database_connections=${DATABASE_CONNECTIONS}" >> $GITHUB_OUTPUT
+    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        if [ -f .apercu-state.json ]; then
+          NEW_HASH="$(md5sum .apercu-state.json | cut -d " " -f 1)"
+          if [[ "$NEW_HASH" != "${{ steps.state.outputs.hash }}" ]]; then
+            # State changed, updating or creating comment
+            COMMENT_ID="${{ steps.state.outputs.comment }}"
+
+            NEW_BODY=$(printf 'Apercu cache data, do not delete this comment\n<!-- apercu-state-data\n%s\n-->' "$(cat .apercu-state.json)")
+
+            if [ -z "$COMMENT_ID" ]; then
+              # Create comment
+              gh pr comment "${{ github.event.issue.number }}" --body "$NEW_BODY"
+            else
+              # Update comment
+              gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
+                 -X PATCH -f body="$NEW_BODY"
+            fi
+          fi
+        fi
