@@ -15,7 +15,7 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && statsWith(github.event.comment.body, '/apercu') }}
+    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/apercu') }}
       id: state
       shell: bash
       env:
@@ -32,7 +32,7 @@ runs:
           echo "hash=$(md5sum .apercu-state.json | cut -d " " -f 1)" >> $GITHUB_OUTPUT
           echo "comment=$COMMENT_ID" >> $GITHUB_OUTPUT
         fi
-    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && statsWith(github.event.comment.body, '/apercu') }}
+    - if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/apercu') }}
       id: parse
       shell: bash
       env:
