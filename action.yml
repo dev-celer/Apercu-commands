@@ -43,6 +43,8 @@ runs:
     - if: ${{ github.event.issue.pull_request && github.event_name == 'issue_comment' && github.event.action == 'created' && startsWith(github.event.comment.body, '/apercu') }}
       id: apercu_run
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         export PR_NUMBER=${{ github.event.issue.number }}
         chmod +x ${{ github.action_path }}/apercu
